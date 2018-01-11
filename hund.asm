@@ -5,10 +5,12 @@
 STATE			= $80
 P0_STEPS		= $81
 P1_STEPS		= $82
+WELCOME_COLOR   = $83
 
-WELCOME_COLOR	= $82
-P0_COLOR		= $F8
-P1_COLOR		= $EE
+P0_COLOR		= $48
+P1_COLOR		= $7A
+
+NUM_SCANLINES	= 242	; PAL
 
     ORG $F000       ; Start of "cart area" (see Atari memory map)
 
@@ -60,8 +62,10 @@ WelcomeStartFrame:
 	jsr VerticalSync
 
 PrepareWelcome:   ; We'll use the first VBLANK scanline for setup
-    lda #WELCOME_COLOR
-    sta COLUPF
+	ldx	WELCOME_COLOR
+	stx COLUPF
+	inx
+	stx	WELCOME_COLOR
     ldx #0          ; X will count visible scanlines, let's reset it
     jsr VerticalBlank
     lda #0          ; Vertical blank is done, we can "turn on" the beam
@@ -69,10 +73,10 @@ PrepareWelcome:   ; We'll use the first VBLANK scanline for setup
 
 WelcomeScanline:
     cpx #128        ; "HUND" = (4 chars x 8 lines) x 4 scanlines = 128
-    bcs WelcomeScanlineEnd ;
-    txa             ; 
-    lsr             ;
-    lsr				;
+    bcs WelcomeScanlineEnd
+    txa
+    lsr
+    lsr
     tay             ; y := x / 4
     lda WelcomePhrase,y
     sta PF1         ; Put the value on PF bits 4-11 (0-3 is PF0, 12-15 is PF2)
@@ -85,7 +89,7 @@ WelcomeScanlineEnd:
 	sta PF1
     sta WSYNC       ; Wait for scanline end
     inx             ; Increase counter; repeat untill we got all kernel scanlines
-    cpx #191		; 192 is the last visible scanline
+    cpx #(NUM_SCANLINES-1)
     bne WelcomeScanline
 
 WelcomeOverscan:
@@ -102,36 +106,43 @@ GamePrepare:		; VBLANK
     ldx #0          ; x: visible scan line counter
     ldy #0			; y: sprite row counter
     jsr VerticalBlank
-    lda #0 			; Vertical blank is done, we can "turn on" the beam
-    sta VBLANK
+    lda #0 			
+    sta GRP0
+    sta GRP1
+    sta VBLANK		; Vertical blank is done, we can "turn on" the beam
 GameScanline:
-	cpx #90				; 2		[2]
-	bcs GameDog1		; 2		[4]
-	cpx #30				; 2		[6]
-	bcs GameDog0		; 2		[8]
-	jmp GameScanlineEnd
-GameDog0:
-	cpx #38
-	bcs GameScanlineEnd
-	lda Hund0,y
-	sta GRP0
-	sta RESP0
-	iny
-	jmp GameScanlineEnd
-GameDog1:
-	cpx #98
-	bcs GameScanlineEnd
-	lda Hund0,y
-	sta GRP1
-	sleep 4
-	sta RESP1
-	iny
-	jmp GameScanlineEnd
+	cpx #30
+	beq GameDog0
+	cpx #90
+	beq GameDog1
 GameScanlineEnd:
     sta WSYNC
     inx
-    cpx #191		; 192 is the last visible scanline
+    cpx #(NUM_SCANLINES-1)
     bne GameScanline
+    jmp GameOverscan
+GameDog0:
+	REPEAT 8
+	lda Hund0,y
+	iny
+	sta GRP0
+	sta RESP0
+	sta WSYNC
+	inx
+	REPEND
+	ldy	#0
+	jmp GameScanline
+GameDog1:
+	REPEAT 8
+	lda Hund0,y
+	iny
+	sta GRP1
+	sta RESP1
+	sta WSYNC
+	inx
+	REPEND
+	ldy #0
+	jmp GameScanline
 GameOverscan:
 	jsr OverScan
 	jmp GameStartFrame 
