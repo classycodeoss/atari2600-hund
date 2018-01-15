@@ -9,13 +9,11 @@ P0_X			= $83
 P1_X			= $84
 WELCOME_COLOR   = $85
 WELCOME_DISMISS	= $86
-WELCOME_BTN_CNT	= $87
 P0_WIN			= $88
 P1_WIN			= $89
 
-MAX_X_POS		= 10
-WELCOME_DISMISS_PRESSES	= 4
-STEP_PRESSES	= 10
+MAX_X_POS		= 160
+X_INITIAL		= 10
 SPRITE_HEIGHT	= 8
 P0_COLOR		= $2A
 P1_COLOR		= $7A
@@ -33,16 +31,11 @@ Init:
     sta COLUP0
     lda #P1_COLOR	; Player 2 color
     sta COLUP1
-    lda #1			; Step counter initial values
+    lda #X_INITIAL			; Initial positions
     sta P0_X
     sta P1_X
-    lda	#STEP_PRESSES
-    sta	P0_PRESS_CNT
-    sta	P1_PRESS_CNT
 	lda	#0
 	sta	WELCOME_DISMISS
-    lda #WELCOME_DISMISS_PRESSES
-    sta WELCOME_BTN_CNT
     jmp WelcomeStartFrame
     
 ;	Helper function that skips x > 0 scanlines, x = 0 after this method
@@ -124,38 +117,33 @@ GameP1ButtonCheck:
     lda INPT5
     bpl	GameP1ButtonPressed
 GameP1Done:
-GamePostButtonCheck:
+GameHorzPos:
+	lda	P0_X
+	ldx	#0
+	jsr	HorizontalPosition
+	lda	P1_X
+	ldx	#1
+	jsr	HorizontalPosition
 	ldy #0			; y: sprite row counter
 	ldx	#0			; x: visible scan line counter
 GameWaitForVBLANKEnd:
 	lda	INTIM
 	bne	GameWaitForVBLANKEnd
 	sta	WSYNC
+	sta	HMOVE
 	sta VBLANK		; Turn on beam, a = 0 (timer value) 
     jmp	GameScanline
 GameP0ButtonPressed:
-	dec	P0_PRESS_CNT
-	beq	GameP0Advance
-	jmp	GameP0Done
-GameP0Advance:
 	inc	P0_X
-	lda	#STEP_PRESSES
-	sta	P0_PRESS_CNT
 	jmp	GameP0Done
 GameP1ButtonPressed:
-	dec	P1_PRESS_CNT
-	beq	GameP1Advance
-	jmp	GameP1Done
-GameP1Advance
 	inc	P1_X
-	lda	#STEP_PRESSES
-	sta	P1_PRESS_CNT
 	jmp	GameP1Done
 GameScanline:				; Start of visible game area
 	cpx #60
-	beq GameDog0Pre
+	beq GameDog0
 	cpx #120
-	beq GameDog1Pre
+	beq GameDog1
 GameScanlineEnd:
 	inx
     sta WSYNC
@@ -164,40 +152,28 @@ GameScanlineEnd:
     jmp GameOverscan
     
 ; First dog
-GameDog0Pre:
-	ldx P0_X	; (previous value of x = 30)
 GameDog0:
 	lda Hund0,y	
 	sta GRP0
-GameDog0Delay:
-	dex
-	bne	GameDog0Delay
-	sta RESP0
 	sta WSYNC
 	sta WSYNC
 	iny
 	cpy	#SPRITE_HEIGHT
-	bcc	GameDog0Pre
+	bcc	GameDog0
 GameDog0Done:
 	ldx	#(60 + 2 * SPRITE_HEIGHT)	; We started drawing first dog at scanline 30, 8 pixels on 2 lines
 	ldy	#0
 	jmp GameScanline
 	
 ; Second dog
-GameDog1Pre:
-	ldx P1_X	; (previous value of x = 90)
 GameDog1:
 	lda Hund0,y
 	sta GRP1
-GameDog1Delay:
-	dex
-	bne	GameDog1Delay
-	sta RESP1
-	sta WSYNC
+	sta WSYNC	
 	sta WSYNC
 	iny
 	cpy	#SPRITE_HEIGHT
-	bcc	GameDog1Pre
+	bcc	GameDog1
 GameDog1Done:
 	ldx	#(120 + 2 * 8)	; We started drawing second dog at scanline 90, 8 pixels on 2 lines
 	jmp GameScanline
@@ -218,19 +194,57 @@ GameResultCalc:
     jsr	SkipScanlines
 	jmp GameStartFrame 
 BackToWelcome:
-	lda	#1
+	lda	#X_INITIAL
 	sta	P0_X
 	sta	P1_X
     lda	#0
     sta	GRP0
     sta	GRP1
 	sta	WELCOME_DISMISS
-    lda #WELCOME_DISMISS_PRESSES
-    sta WELCOME_BTN_CNT
 	ldx #29
     jsr	SkipScanlines
     jmp	WelcomeStartFrame
 
+HorizontalPosition:
+	sta WSYNC                   ; 00     Sync to start of scanline.
+	sec                         ; 02     Set the carry flag so no borrow will be applied during the division.
+.divideby15
+	sbc #15                     ; 04     Waste the necessary amount of time dividing X-pos by 15!
+	bcs .divideby15             ; 06/07  11/16/21/26/31/36/41/46/51/56/61/66
+
+	tay
+	lda fineAdjustTable,y       ; 13 -> Consume 5 cycles by guaranteeing we cross a page boundary
+	sta HMP0,x
+
+	sta RESP0,x                 ; 21/ 26/31/36/41/46/51/56/61/66/71 - Set the rough position.
+	rts
+
+; This table converts the "remainder" of the division by 15 (-1 to -15) to the correct
+; fine adjustment value. This table is on a page boundary to guarantee the processor
+; will cross a page boundary and waste a cycle in order to be at the precise position
+; for a RESP0,x write
+	ORG $FE00
+
+fineAdjustBegin:
+    DC.B %01110000 ; Left 7
+    DC.B %01100000 ; Left 6
+    DC.B %01010000 ; Left 5
+    DC.B %01000000 ; Left 4
+    DC.B %00110000 ; Left 3
+    DC.B %00100000 ; Left 2
+    DC.B %00010000 ; Left 1
+    DC.B %00000000 ; No movement
+    DC.B %11110000 ; Right 1
+    DC.B %11100000 ; Right 2
+    DC.B %11010000 ; Right 3
+    DC.B %11000000 ; Right 4
+    DC.B %10110000 ; Right 5
+    DC.B %10100000 ; Right 6
+    DC.B %10010000 ; Right 7
+fineAdjustTable EQU fineAdjustBegin - %11110001 ; NOTE: %11110001 = -15
+
+	ORG $FEC0
+	
 WelcomePhrase:
     .BYTE %00000000 ; H
     .BYTE %01000010
