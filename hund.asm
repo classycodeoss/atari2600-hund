@@ -3,13 +3,18 @@
     INCLUDE "macro.h"
 
 STATE			= $80
-P0_STEPS		= $81
-P1_STEPS		= $82
-WELCOME_COLOR   = $83
+P0_PRESS_CNT	= $81
+P1_PRESS_CNT	= $82
+P0_STEPS		= $83
+P1_STEPS		= $84
+WELCOME_COLOR   = $85
+WELCOME_DISMISS	= $86
+TEMP			= $90
 
-P0_COLOR		= $48
+STEP_PRESSES	= 20
+SPRITE_HEIGHT	= 8
+P0_COLOR		= $2A
 P1_COLOR		= $7A
-
 NUM_SCANLINES	= 242	; PAL
 
     ORG $F000       ; Start of "cart area" (see Atari memory map)
@@ -26,51 +31,52 @@ CommonInit:
     sta COLUBK
     lda #$00
     sta CTRLPF
-    jmp GameStartFrame
-    ;jmp WelcomeStartFrame
+    lda #P0_COLOR
+    sta COLUP0
+    lda #P1_COLOR
+    sta COLUP1
+    lda #1
+    sta P0_STEPS
+    sta P1_STEPS
+    jmp WelcomeStartFrame
+    
+;	Helper function that skips x > 0 scanlines, x = 0 after this method
+SkipScanlines:
+	sta	WSYNC
+	dex
+	bne	SkipScanlines
+	rts
 
-VerticalSync:
-    lda #%00000010	; D1=1 for VSYNC
-    sta WSYNC
+;	SPLASH KERNEL
+WelcomeStartFrame:
+	lda #%00000010	; D1=1 for VSYNC
     sta VSYNC   	; D1=1, turns on Vertical Sync signal
     sta WSYNC
     sta WSYNC
+    sta WSYNC
     lda #0
-    sta WSYNC
-    sta VSYNC   ; D1=0 turn off Vertical Sync signal
-    rts
-
-VerticalBlank:    
-    ldx #37
-VerticalBlankLoop:        
-    sta WSYNC
-    dex
-    bne VerticalBlankLoop
-    rts
-    
-OverScan:
-    lda #%01000010  ; D1=1
-    sta VBLANK  	; VBLANK D1=1 turns image output off
-    ldx #30
-OverScanLoop:
-	sta WSYNC
-	dex
-	bne OverScanLoop
-	rts
-    
-WelcomeStartFrame:
-	jsr VerticalSync
-
-PrepareWelcome:   ; We'll use the first VBLANK scanline for setup
+    sta VSYNC		; D1=0 turn off Vertical Sync signal
+	
+WelcomePrepare:		; We'll use the first VBLANK scanline for setup
+	lda	WELCOME_DISMISS
+	bne GamePrepare
 	ldx	WELCOME_COLOR
 	stx COLUPF
 	inx
 	stx	WELCOME_COLOR
-    ldx #0          ; X will count visible scanlines, let's reset it
-    jsr VerticalBlank
-    lda #0          ; Vertical blank is done, we can "turn on" the beam
+	lda	INPT4		; D7 set = button pressed
+	bpl	WelcomeButtonPressed
+WelcomePostButtonCheck:
+    ldx	#37
+    jsr SkipScanlines
     sta VBLANK
-
+    ldx #0          ; X will count visible scanlines, let's reset it
+    lda #0          ; Vertical blank is done, we can "turn on" the beam
+    jmp	WelcomeScanline
+WelcomeButtonPressed:
+	lda	#1
+	sta	WELCOME_DISMISS
+	jmp	WelcomePostButtonCheck
 WelcomeScanline:
     cpx #128        ; "HUND" = (4 chars x 8 lines) x 4 scanlines = 128
     bcs WelcomeScanlineEnd
@@ -79,8 +85,7 @@ WelcomeScanline:
     lsr
     tay             ; y := x / 4
     lda WelcomePhrase,y
-    sta PF1         ; Put the value on PF bits 4-11 (0-3 is PF0, 12-15 is PF2)
-    
+    sta PF1
 WelcomeScanlineEnd:
 	nop
 	nop
@@ -91,60 +96,128 @@ WelcomeScanlineEnd:
     inx             ; Increase counter; repeat untill we got all kernel scanlines
     cpx #(NUM_SCANLINES-1)
     bne WelcomeScanline
-
 WelcomeOverscan:
-	jsr OverScan
+	lda #%01000010  ; D1=1
+    sta VBLANK  	; VBLANK D1=1 turns image output off
+    ldx #30
+    jsr	SkipScanlines
     jmp WelcomeStartFrame
-
+    
+;	GAME KERNEL
 GameStartFrame:
-	jsr VerticalSync
-GamePrepare:		; VBLANK
-    lda #P0_COLOR
-    sta COLUP0
-    lda #P1_COLOR
-    sta COLUP1
-    ldx #0          ; x: visible scan line counter
-    ldy #0			; y: sprite row counter
-    jsr VerticalBlank
-    lda #0 			
-    sta GRP0
-    sta GRP1
-    sta VBLANK		; Vertical blank is done, we can "turn on" the beam
-GameScanline:
-	cpx #30
-	beq GameDog0
-	cpx #90
-	beq GameDog1
-GameScanlineEnd:
+	lda #%00000010	; D1=1 for VSYNC
+    sta VSYNC   	; D1=1, turns on Vertical Sync signal
     sta WSYNC
-    inx
+    sta WSYNC
+    sta WSYNC
+    lda #0
+    sta VSYNC		; D1=0 turn off Vertical Sync signal
+GamePrepare:		; VBLANK: 37 scanlines
+	lda	#0
+	ldy	#0			; y: sprite row counter
+GameP0ButtonCheck:
+    lda	INPT4
+    bpl	GameP0ButtonPressed
+GameP0Done:
+	sta WSYNC		; 36 scanlines of VBLANK remaining
+GameP1ButtonCheck:
+    lda INPT5
+    bpl	GameP1ButtonPressed
+GameP1Done:
+	sta	WSYNC		; 35 scanlines of VBLANK remaining
+GamePostButtonCheck:
+	lda	#0
+	ldy #0			; y: sprite row counter
+    ldx	#35			; Remaining scanlines in vertical blank
+    jsr	SkipScanlines
+    sta VBLANK		; Vertical blank is done, we can "turn on" the beam
+    ldx	#0			; x: visible scan line counter
+    jmp	GameScanline
+GameP0ButtonPressed:
+	lda	P0_PRESS_CNT
+	cmp	#STEP_PRESSES
+	beq	GameP0Advance
+	adc	#1
+	sta	P0_PRESS_CNT
+	jmp	GameP0Done
+GameP0Advance:
+	lda	P0_STEPS
+	adc	#1
+	sta	P0_STEPS
+	lda	#0
+	sta	P0_PRESS_CNT
+	jmp	GameP0Done
+GameP1ButtonPressed:
+	lda	P1_PRESS_CNT
+	cmp	#STEP_PRESSES
+	beq	GameP1Advance
+	adc	#1
+	sta	P1_PRESS_CNT
+	jmp	GameP1Done
+GameP1Advance
+	lda	P1_STEPS
+	adc	#1
+	sta	P1_STEPS
+	lda	#0
+	sta	P1_PRESS_CNT
+	jmp	GameP1Done
+GameScanline:				; Start of visible game area
+	cpx #60
+	beq GameDog0Pre
+	cpx #120
+	beq GameDog1Pre
+GameScanlineEnd:
+	inx
+    sta WSYNC
     cpx #(NUM_SCANLINES-1)
     bne GameScanline
     jmp GameOverscan
+    
+; First dog
+GameDog0Pre:
+	ldx P0_STEPS	; (previous value of x = 30)
 GameDog0:
-	REPEAT 8
-	lda Hund0,y
-	iny
+	lda Hund0,y	
 	sta GRP0
+GameDog0Delay:
+	dex
+	bne	GameDog0Delay
 	sta RESP0
 	sta WSYNC
-	inx
-	REPEND
+	sta WSYNC
+	iny
+	cpy	#SPRITE_HEIGHT
+	bcc	GameDog0Pre
+GameDog0Done:
+	ldx	#(60 + 2 * SPRITE_HEIGHT)	; We started drawing first dog at scanline 30, 8 pixels on 2 lines
 	ldy	#0
 	jmp GameScanline
+	
+; Second dog
+GameDog1Pre:
+	ldx P1_STEPS	; (previous value of x = 90)
 GameDog1:
-	REPEAT 8
 	lda Hund0,y
-	iny
 	sta GRP1
+GameDog1Delay:
+	dex
+	bne	GameDog1Delay
 	sta RESP1
 	sta WSYNC
-	inx
-	REPEND
-	ldy #0
+	sta WSYNC
+	iny
+	cpy	#SPRITE_HEIGHT
+	bcc	GameDog1Pre
+GameDog1Done:
+	ldx	#(120 + 2 * 8)	; We started drawing second dog at scanline 90, 8 pixels on 2 lines
 	jmp GameScanline
+
+; Overscan: 30 scan lines
 GameOverscan:
-	jsr OverScan
+    lda #%00000010  ; D1=1
+    sta VBLANK  	; VBLANK D1=1 turns image output off
+    ldx #30
+    jsr	SkipScanlines
 	jmp GameStartFrame 
 
 WelcomePhrase:
