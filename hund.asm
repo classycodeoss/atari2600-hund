@@ -9,8 +9,10 @@ P0_STEPS		= $83
 P1_STEPS		= $84
 WELCOME_COLOR   = $85
 WELCOME_DISMISS	= $86
+WELCOME_BTN_CNT	= $87
 TEMP			= $90
 
+WELCOME_DISMISS_PRESSES	= 10
 STEP_PRESSES	= 20
 SPRITE_HEIGHT	= 8
 P0_COLOR		= $2A
@@ -20,13 +22,7 @@ NUM_SCANLINES	= 242	; PAL
     ORG $F000       ; Start of "cart area" (see Atari memory map)
 
 Init:
-	ldx #0
-	lda #0
-Clear:
-    sta 0,x
-    inx
-    bne Clear		; Will fall through when x wraps around after 0XFF
-CommonInit:
+	CLEAN_START
     lda #$00		; Background color (black)
     sta COLUBK
     lda #$00
@@ -38,6 +34,8 @@ CommonInit:
     lda #1
     sta P0_STEPS
     sta P1_STEPS
+    lda #WELCOME_DISMISS_PRESSES
+    sta WELCOME_BTN_CNT
     jmp WelcomeStartFrame
     
 ;	Helper function that skips x > 0 scanlines, x = 0 after this method
@@ -49,21 +47,17 @@ SkipScanlines:
 
 ;	SPLASH KERNEL
 WelcomeStartFrame:
-	lda #%00000010	; D1=1 for VSYNC
-    sta VSYNC   	; D1=1, turns on Vertical Sync signal
-    sta WSYNC
-    sta WSYNC
-    sta WSYNC
-    lda #0
-    sta VSYNC		; D1=0 turn off Vertical Sync signal
+	VERTICAL_SYNC
 	
 WelcomePrepare:		; We'll use the first VBLANK scanline for setup
 	lda	WELCOME_DISMISS
 	bne GamePrepare
-	ldx	WELCOME_COLOR
+WelcomeAnimateColor:
+	ldx	WELCOME_COLOR	; load and animate color
 	stx COLUPF
 	inx
 	stx	WELCOME_COLOR
+WelcomeButtonCheck:
 	lda	INPT4		; D7 set = button pressed
 	bpl	WelcomeButtonPressed
 WelcomePostButtonCheck:
@@ -74,7 +68,11 @@ WelcomePostButtonCheck:
     lda #0          ; Vertical blank is done, we can "turn on" the beam
     jmp	WelcomeScanline
 WelcomeButtonPressed:
-	lda	#1
+	ldx	WELCOME_BTN_CNT
+	dex
+	stx	WELCOME_BTN_CNT
+	bne	WelcomePostButtonCheck
+	lda #1
 	sta	WELCOME_DISMISS
 	jmp	WelcomePostButtonCheck
 WelcomeScanline:
@@ -87,9 +85,7 @@ WelcomeScanline:
     lda WelcomePhrase,y
     sta PF1
 WelcomeScanlineEnd:
-	nop
-	nop
-	nop
+	SLEEP	5
 	lda #0			; don't display right half of PF
 	sta PF1
     sta WSYNC       ; Wait for scanline end
@@ -105,13 +101,8 @@ WelcomeOverscan:
     
 ;	GAME KERNEL
 GameStartFrame:
-	lda #%00000010	; D1=1 for VSYNC
-    sta VSYNC   	; D1=1, turns on Vertical Sync signal
-    sta WSYNC
-    sta WSYNC
-    sta WSYNC
-    lda #0
-    sta VSYNC		; D1=0 turn off Vertical Sync signal
+	VERTICAL_SYNC
+	
 GamePrepare:		; VBLANK: 37 scanlines
 	lda	#0
 	ldy	#0			; y: sprite row counter
