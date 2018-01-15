@@ -55,6 +55,8 @@ SkipScanlines:
 ;	SPLASH KERNEL
 WelcomeStartFrame:
 	VERTICAL_SYNC
+	lda	#43
+	sta	TIM64T		; Timer fires after around 2798 cycles, before end of last VBLANK scanline
 	
 WelcomePrepare:		; We'll use the first VBLANK scanline for setup
 	lda	WELCOME_DISMISS
@@ -66,9 +68,10 @@ WelcomeAnimateColor:
 WelcomeButtonCheck:
 	lda	INPT4			; D7 set = button pressed
 	bpl	WelcomeP0Pressed
-WelcomePostButtonCheck:
-    ldx	#37
-    jsr SkipScanlines
+WelcomeWaitForVBLANKEnd:
+	lda	INTIM
+	bne	WelcomeWaitForVBLANKEnd
+	sta	WSYNC
     sta VBLANK
     ldx #0          ; X will count visible scanlines, let's reset it
     lda #0          ; Vertical blank is done, we can "turn on" the beam
@@ -76,11 +79,11 @@ WelcomePostButtonCheck:
 WelcomeP0Pressed:
 	lda	INPT5
 	bpl	WelcomeBothPressed
-	jmp	WelcomePostButtonCheck
+	jmp	WelcomeWaitForVBLANKEnd
 WelcomeBothPressed:
 	lda #1
 	sta	WELCOME_DISMISS
-	jmp	WelcomePostButtonCheck
+	jmp	WelcomeWaitForVBLANKEnd
 WelcomeScanline:
     cpx #128        ; "HUND" = (4 chars x 8 lines) x 4 scanlines = 128
     bcs WelcomeScanlineEnd
@@ -108,7 +111,8 @@ WelcomeOverscan:
 ;	GAME KERNEL
 GameStartFrame:
 	VERTICAL_SYNC
-	
+	lda	#43
+	sta	TIM64T
 GamePrepare:		; VBLANK: 37 scanlines
 	lda	#0
 	ldy	#0			; y: sprite row counter
@@ -116,19 +120,18 @@ GameP0ButtonCheck:
     lda	INPT4
     bpl	GameP0ButtonPressed
 GameP0Done:
-	sta WSYNC		; 36 scanlines of VBLANK remaining
 GameP1ButtonCheck:
     lda INPT5
     bpl	GameP1ButtonPressed
 GameP1Done:
-	sta	WSYNC		; 35 scanlines of VBLANK remaining
 GamePostButtonCheck:
-	lda	#0
 	ldy #0			; y: sprite row counter
-    ldx	#35			; Remaining scanlines in vertical blank
-    jsr	SkipScanlines
-    sta VBLANK		; Vertical blank is done, we can "turn on" the beam
-    ldx	#0			; x: visible scan line counter
+	ldx	#0			; x: visible scan line counter
+GameWaitForVBLANKEnd:
+	lda	INTIM
+	bne	GameWaitForVBLANKEnd
+	sta	WSYNC
+	sta VBLANK		; Turn on beam, a = 0 (timer value) 
     jmp	GameScanline
 GameP0ButtonPressed:
 	dec	P0_PRESS_CNT
