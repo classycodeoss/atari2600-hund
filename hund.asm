@@ -5,15 +5,17 @@
 STATE			= $80
 P0_PRESS_CNT	= $81
 P1_PRESS_CNT	= $82
-P0_STEPS		= $83
-P1_STEPS		= $84
+P0_X			= $83
+P1_X			= $84
 WELCOME_COLOR   = $85
 WELCOME_DISMISS	= $86
 WELCOME_BTN_CNT	= $87
-TEMP			= $90
+P0_WIN			= $88
+P1_WIN			= $89
 
-WELCOME_DISMISS_PRESSES	= 10
-STEP_PRESSES	= 20
+MAX_X_POS		= 10
+WELCOME_DISMISS_PRESSES	= 4
+STEP_PRESSES	= 10
 SPRITE_HEIGHT	= 8
 P0_COLOR		= $2A
 P1_COLOR		= $7A
@@ -27,13 +29,18 @@ Init:
     sta COLUBK
     lda #$00
     sta CTRLPF
-    lda #P0_COLOR
+    lda #P0_COLOR	; Player 1 color
     sta COLUP0
-    lda #P1_COLOR
+    lda #P1_COLOR	; Player 2 color
     sta COLUP1
-    lda #1
-    sta P0_STEPS
-    sta P1_STEPS
+    lda #1			; Step counter initial values
+    sta P0_X
+    sta P1_X
+    lda	#STEP_PRESSES
+    sta	P0_PRESS_CNT
+    sta	P1_PRESS_CNT
+	lda	#0
+	sta	WELCOME_DISMISS
     lda #WELCOME_DISMISS_PRESSES
     sta WELCOME_BTN_CNT
     jmp WelcomeStartFrame
@@ -68,9 +75,7 @@ WelcomePostButtonCheck:
     lda #0          ; Vertical blank is done, we can "turn on" the beam
     jmp	WelcomeScanline
 WelcomeButtonPressed:
-	ldx	WELCOME_BTN_CNT
-	dex
-	stx	WELCOME_BTN_CNT
+	dec	WELCOME_BTN_CNT
 	bne	WelcomePostButtonCheck
 	lda #1
 	sta	WELCOME_DISMISS
@@ -125,31 +130,21 @@ GamePostButtonCheck:
     ldx	#0			; x: visible scan line counter
     jmp	GameScanline
 GameP0ButtonPressed:
-	lda	P0_PRESS_CNT
-	cmp	#STEP_PRESSES
+	dec	P0_PRESS_CNT
 	beq	GameP0Advance
-	adc	#1
-	sta	P0_PRESS_CNT
 	jmp	GameP0Done
 GameP0Advance:
-	lda	P0_STEPS
-	adc	#1
-	sta	P0_STEPS
-	lda	#0
+	inc	P0_X
+	lda	#STEP_PRESSES
 	sta	P0_PRESS_CNT
 	jmp	GameP0Done
 GameP1ButtonPressed:
-	lda	P1_PRESS_CNT
-	cmp	#STEP_PRESSES
+	dec	P1_PRESS_CNT
 	beq	GameP1Advance
-	adc	#1
-	sta	P1_PRESS_CNT
 	jmp	GameP1Done
 GameP1Advance
-	lda	P1_STEPS
-	adc	#1
-	sta	P1_STEPS
-	lda	#0
+	inc	P1_X
+	lda	#STEP_PRESSES
 	sta	P1_PRESS_CNT
 	jmp	GameP1Done
 GameScanline:				; Start of visible game area
@@ -166,7 +161,7 @@ GameScanlineEnd:
     
 ; First dog
 GameDog0Pre:
-	ldx P0_STEPS	; (previous value of x = 30)
+	ldx P0_X	; (previous value of x = 30)
 GameDog0:
 	lda Hund0,y	
 	sta GRP0
@@ -186,7 +181,7 @@ GameDog0Done:
 	
 ; Second dog
 GameDog1Pre:
-	ldx P1_STEPS	; (previous value of x = 90)
+	ldx P1_X	; (previous value of x = 90)
 GameDog1:
 	lda Hund0,y
 	sta GRP1
@@ -207,9 +202,30 @@ GameDog1Done:
 GameOverscan:
     lda #%00000010  ; D1=1
     sta VBLANK  	; VBLANK D1=1 turns image output off
-    ldx #30
+    sta WSYNC
+GameResultCalc:
+	lda	P0_X
+	cmp	#MAX_X_POS
+	beq	BackToWelcome
+	lda	P1_X
+	cmp	#MAX_X_POS
+	beq	BackToWelcome
+	ldx #29
     jsr	SkipScanlines
 	jmp GameStartFrame 
+BackToWelcome:
+	lda	#1
+	sta	P0_X
+	sta	P1_X
+    lda	#0
+    sta	GRP0
+    sta	GRP1
+	sta	WELCOME_DISMISS
+    lda #WELCOME_DISMISS_PRESSES
+    sta WELCOME_BTN_CNT
+	ldx #29
+    jsr	SkipScanlines
+    jmp	WelcomeStartFrame
 
 WelcomePhrase:
     .BYTE %00000000 ; H
