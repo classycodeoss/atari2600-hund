@@ -62,11 +62,10 @@ WelcomePrepare:		; We'll use the first VBLANK scanline for setup
 WelcomeAnimateColor:
 	ldx	WELCOME_COLOR	; load and animate color
 	stx COLUPF
-	inx
-	stx	WELCOME_COLOR
+	inc	WELCOME_COLOR
 WelcomeButtonCheck:
-	lda	INPT4		; D7 set = button pressed
-	bpl	WelcomeButtonPressed
+	lda	INPT4			; D7 set = button pressed
+	bpl	WelcomeP0Pressed
 WelcomePostButtonCheck:
     ldx	#37
     jsr SkipScanlines
@@ -74,9 +73,11 @@ WelcomePostButtonCheck:
     ldx #0          ; X will count visible scanlines, let's reset it
     lda #0          ; Vertical blank is done, we can "turn on" the beam
     jmp	WelcomeScanline
-WelcomeButtonPressed:
-	dec	WELCOME_BTN_CNT
-	bne	WelcomePostButtonCheck
+WelcomeP0Pressed:
+	lda	INPT5
+	bpl	WelcomeBothPressed
+	jmp	WelcomePostButtonCheck
+WelcomeBothPressed:
 	lda #1
 	sta	WELCOME_DISMISS
 	jmp	WelcomePostButtonCheck
@@ -90,8 +91,8 @@ WelcomeScanline:
     lda WelcomePhrase,y
     sta PF1
 WelcomeScanlineEnd:
-	SLEEP	5
-	lda #0			; don't display right half of PF
+	SLEEP	5		; Turn off playfield so we display only left side of scree
+	lda #0			
 	sta PF1
     sta WSYNC       ; Wait for scanline end
     inx             ; Increase counter; repeat untill we got all kernel scanlines
