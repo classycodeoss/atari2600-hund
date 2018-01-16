@@ -4,7 +4,7 @@
 
 MAX_X_POS		= 160
 X_INITIAL		= 10
-X_STEPS			= 4
+X_STEPS			= 2
 SPRITE_HEIGHT	= 8
 P0_COLOR		= $2A
 P1_COLOR		= $7A
@@ -123,7 +123,9 @@ GameP0ButtonPressed:
 	inc	P0_PRESSED				; Allow wrap around
 	jmp	GameP0Done
 GameP0ButtonReleased:
-	inc	P0_X					; Advance player 1
+	lda	P0_X
+	adc	#X_STEPS
+	sta	P0_X					; Advance player 1
 	lda	#0
 	sta	P0_PRESSED				; Restore pressed state
 GameP0Done:
@@ -137,7 +139,9 @@ GameP1ButtonPressed:
 	inc	P1_PRESSED				; Allow wrap around
 	jmp	GameP1Done
 GameP1ButtonReleased:
-	inc	P1_X					; Advance player 2
+	lda	P1_X
+	adc	#X_STEPS
+	sta	P1_X					; Advance player 2
 	lda	#0
 	sta	P1_PRESSED				; Restore pressed state
 GameP1Done:
