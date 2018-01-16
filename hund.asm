@@ -3,7 +3,7 @@
     INCLUDE "macro.h"
 
 MAX_X_POS		= 160
-X_INITIAL		= 10
+X_INITIAL		= 4
 X_STEPS			= 2
 SPRITE_HEIGHT	= 8
 P0_COLOR		= $2A
@@ -18,8 +18,7 @@ P0_PRESSED		ds 1
 P1_PRESSED		ds 1
 P0_X			ds 1
 P1_X			ds 1
-P0_WIN			ds 1
-P1_WIN			ds 1
+WIN				ds 1
 WELCOME_COLOR	ds 1
 WELCOME_DISMISS	ds 1
 
@@ -50,7 +49,7 @@ SkipScanlines:
 	bne	SkipScanlines
 	rts
 
-;	SPLASH KERNEL
+;	Welcome screen
 WelcomeStartFrame:
 	VERTICAL_SYNC
 	lda	#43
@@ -207,24 +206,85 @@ GameOverscan:
 GameResultCalc:
 	lda	P0_X
 	cmp	#MAX_X_POS
-	beq	BackToWelcome
+	beq	GameResultP0Win
 	lda	P1_X
 	cmp	#MAX_X_POS
-	beq	BackToWelcome
+	beq	GameResultP1Win
+GameResultProceed:
 	ldx #29
     jsr	SkipScanlines
-	jmp GameStartFrame 
-BackToWelcome:
+	jmp GameStartFrame 			; Normal processing, no winner yet
+GameResultP0Win:
+	lda	#0
+	sta	WIN
+	jmp	GameResultWin
+GameResultP1Win:
+	lda	#1
+	sta	WIN
+GameResultWin:
+	ldx	#29
+    jsr	SkipScanlines
+	jmp WinStartFrame
+
+;	Win Screen
+WinStartFrame:
+	VERTICAL_SYNC
+	lda	#43
+	sta	TIM64T		; Timer fires after around 2798 cycles, before end of last VBLANK scanline
+	
+WinPrepare:			; Win screen logic = reset game state
 	lda	#X_INITIAL
 	sta	P0_X
 	sta	P1_X
     lda	#0
     sta	GRP0
-    sta	GRP1
-	sta	WELCOME_DISMISS
-	ldx #29
+    sta	GRP1	
+WinWaitForVBLANKEnd:
+	lda	INTIM
+	bne	WinWaitForVBLANKEnd
+	sta	WSYNC
+    sta VBLANK
+    ldx #0          ; X will count visible scanlines, let's reset it
+WinScanline:
+    cpx #128        ; "WIN1" or "WIN2" = (4 chars x 8 lines) x 4 scanlines = 128
+    bcs WinScanlineEnd
+    txa
+    lsr
+    lsr
+    tay             ; y := x / 4
+    lda	WIN
+    bne	WinP1
+WinP0:
+	lda	#P0_COLOR
+	sta	COLUPF
+    lda	Win1Phrase,y
+    jmp WinEnd
+WinP1:
+	lda	#P1_COLOR
+	sta	COLUPF
+	lda	Win2Phrase,y
+WinEnd:
+    sta PF1
+WinScanlineEnd:
+    sta WSYNC       ; Wait for scanline end
+    inx             ; Increase counter; repeat untill we got all kernel scanlines
+    cpx #(NUM_SCANLINES-1)
+    bne WinScanline
+WinOverscan:
+	lda #%01000010  ; D1=1
+    sta VBLANK  	; VBLANK D1=1 turns image output off
+    sta	WSYNC
+WinCheckReset:
+	lda	#%00000001
+	bit	SWCHB
+	bne	WinResetNotPressed
+    ldx #29
     jsr	SkipScanlines
-    jmp	WelcomeStartFrame
+    jmp GameStartFrame	
+WinResetNotPressed:
+    ldx #29
+    jsr	SkipScanlines
+    jmp WinStartFrame
 
 HorizontalPosition:
 	sta WSYNC                   ; 00     Sync to start of scanline.
@@ -298,7 +358,75 @@ WelcomePhrase:
     .BYTE %01000010
     .BYTE %01000100
     .BYTE %01111000
-    .BYTE %00000000 ; Last byte written to PF1 (important, ensures last line of doesn't bleed)
+    .BYTE %00000000
+
+Win1Phrase:
+	.BYTE %00000000 ; W
+    .BYTE %01000010
+    .BYTE %01000010
+    .BYTE %01011010
+    .BYTE %01011010
+    .BYTE %01011010
+    .BYTE %00100110
+    .BYTE %00000000
+    .BYTE %00000000 ; I
+    .BYTE %01111110
+    .BYTE %00010000
+    .BYTE %00010000
+    .BYTE %00010000
+    .BYTE %00010000
+    .BYTE %01111110
+    .BYTE %00000000
+    .BYTE %00000000 ; N
+    .BYTE %01000010
+    .BYTE %01100010
+    .BYTE %01010010
+    .BYTE %01001010
+    .BYTE %01000110
+    .BYTE %01000010
+    .BYTE %00000000
+    .BYTE %00000000 ; 1
+    .BYTE %00110000
+    .BYTE %01010000
+    .BYTE %00010000
+    .BYTE %00010000
+    .BYTE %00010000
+    .BYTE %01111100
+    .BYTE %00000000
+
+Win2Phrase:
+	.BYTE %00000000 ; W
+    .BYTE %01000010
+    .BYTE %01000010
+    .BYTE %01011010
+    .BYTE %01011010
+    .BYTE %01011010
+    .BYTE %00100110
+    .BYTE %00000000
+    .BYTE %00000000 ; I
+    .BYTE %01111110
+    .BYTE %00010000
+    .BYTE %00010000
+    .BYTE %00010000
+    .BYTE %00010000
+    .BYTE %01111110
+    .BYTE %00000000
+    .BYTE %00000000 ; N
+    .BYTE %01000010
+    .BYTE %01100010
+    .BYTE %01010010
+    .BYTE %01001010
+    .BYTE %01000110
+    .BYTE %01000010
+    .BYTE %00000000
+    .BYTE %00000000 ; 2
+    .BYTE %00111100
+    .BYTE %01000010
+    .BYTE %00000100
+    .BYTE %00001000
+    .BYTE %00010000
+    .BYTE %01111110
+    .BYTE %00000000
 
 Hund0:
 	.BYTE %00000000
