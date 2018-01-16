@@ -2,16 +2,6 @@
     INCLUDE "vcs.h"
     INCLUDE "macro.h"
 
-STATE			= $80
-P0_PRESS_CNT	= $81
-P1_PRESS_CNT	= $82
-P0_X			= $83
-P1_X			= $84
-WELCOME_COLOR   = $85
-WELCOME_DISMISS	= $86
-P0_WIN			= $88
-P1_WIN			= $89
-
 MAX_X_POS		= 160
 X_INITIAL		= 10
 SPRITE_HEIGHT	= 8
@@ -19,6 +9,20 @@ P0_COLOR		= $2A
 P1_COLOR		= $7A
 NUM_SCANLINES	= 242	; PAL
 
+
+	SEG.U variables
+	ORG $80
+		
+P0_PRESSED		ds 1
+P1_PRESSED		ds 1
+P0_X			ds 1
+P1_X			ds 1
+P0_WIN			ds 1
+P1_WIN			ds 1
+WELCOME_COLOR	ds 1
+WELCOME_DISMISS	ds 1
+
+	SEG				; End of uninitialised segment - start of ROM binary
     ORG $F000       ; Start of "cart area" (see Atari memory map)
 
 Init:
