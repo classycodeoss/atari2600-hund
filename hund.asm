@@ -4,6 +4,7 @@
 
 MAX_X_POS		= 160
 X_INITIAL		= 10
+X_STEPS			= 4
 SPRITE_HEIGHT	= 8
 P0_COLOR		= $2A
 P1_COLOR		= $7A
@@ -111,15 +112,34 @@ GameStartFrame:
 	lda	#43
 	sta	TIM64T
 GamePrepare:		; VBLANK: 37 scanlines
-	lda	#0
 	ldy	#0			; y: sprite row counter
 GameP0ButtonCheck:
     lda	INPT4
     bpl	GameP0ButtonPressed
+    lda	P0_PRESSED				; Button is currently not pressed
+    bne	GameP0ButtonReleased	; Button previously pressed -> now released
+    jmp	GameP0Done
+GameP0ButtonPressed:
+	inc	P0_PRESSED				; Allow wrap around
+	jmp	GameP0Done
+GameP0ButtonReleased:
+	inc	P0_X					; Advance player 1
+	lda	#0
+	sta	P0_PRESSED				; Restore pressed state
 GameP0Done:
 GameP1ButtonCheck:
     lda INPT5
     bpl	GameP1ButtonPressed
+    lda	P1_PRESSED				; Button is currently not pressed	
+    bne	GameP1ButtonReleased	; Button previously pressed -> now released
+    jmp	GameP1Done
+GameP1ButtonPressed:
+	inc	P1_PRESSED				; Allow wrap around
+	jmp	GameP1Done
+GameP1ButtonReleased:
+	inc	P1_X					; Advance player 2
+	lda	#0
+	sta	P1_PRESSED				; Restore pressed state
 GameP1Done:
 GameHorzPos:
 	lda	P0_X
@@ -136,13 +156,6 @@ GameWaitForVBLANKEnd:
 	sta	WSYNC
 	sta	HMOVE
 	sta VBLANK		; Turn on beam, a = 0 (timer value) 
-    jmp	GameScanline
-GameP0ButtonPressed:
-	inc	P0_X
-	jmp	GameP0Done
-GameP1ButtonPressed:
-	inc	P1_X
-	jmp	GameP1Done
 GameScanline:				; Start of visible game area
 	cpx #60
 	beq GameDog0
